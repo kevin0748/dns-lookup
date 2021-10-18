@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <windows.h>
 #include <ctime>
+#include <string>
 
 #include "socket.h"
 #include "dns.h"

@@ -103,7 +103,7 @@ bool Socket::Read(const char* ip) {
             return false;
         }
 
-        bufSize = bytes;
+        bufSize = bytes + 1;
         buf[bytes] = NULL;
         return true; 
     }

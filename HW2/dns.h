@@ -1,6 +1,8 @@
 #pragma once
 #include<windows.h>
 
+using namespace std;
+
 /* DNS query types */
 #define DNS_A       1    /* name->IP */
 #define DNS_NS      2    /* name server */
@@ -68,4 +70,8 @@ class DNS {
 };
 
 bool makeDNSquestion(char* buf, char* host);
+string getRRName(const char* buf, int bufSize, int startIdx, u_int* skipSize);
+bool getRRData(const char* buf, int bufSize, int start, int dataSize, char* data);
+bool getRR(const char* buf, int bufSize, char*& cursor);
+bool parseResponse(char* buf, int bufSize);
 bool query();
