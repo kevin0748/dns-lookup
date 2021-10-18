@@ -9,7 +9,8 @@ int main()
     std::cout << "Hello World!\n";
 
     char server[] = "128.194.135.85";
-    char host[] = "amazon.com";
+    //char server[] = "8.8.8.8";
+    char host[] = "www.dhs.gov";
 
     query(host, server);
 

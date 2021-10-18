@@ -28,6 +28,21 @@ bool makeDNSquestionA(char* buf, const char* host) {
 	return true;
 }
 
+bool makeDNSquestionPtr(char* buf, DWORD IP) {
+	char temp[512];
+
+	snprintf(temp, 512 + 1, "%d.%d.%d.%d.in-addr.arpa",
+		(IP & 0xFF000000) >> 24,
+		(IP & 0x00FF0000) >> 16,
+		(IP & 0x0000FF00) >> 8,
+		IP & 0x000000FF
+	);
+
+	printf("%s\n", temp);
+
+	return makeDNSquestionA(buf, temp);
+}
+
 /*
 * getRRName
 * 
@@ -147,8 +162,9 @@ bool getRR(const char* buf, int bufSize, char*& cursor) {
 		return true;
 	}
 	else {
-		printf("dns type not implemented\n");
-		return false;
+		printf("dns type %d not implemented\n", qType);
+		cursor += dataLen;
+		return true;
 	}
 }
 
@@ -233,33 +249,54 @@ bool parseResponse(char* buf, int bufSize) {
 	return true;
 }
 
-
-
 bool query(const char* lookupAddr, const char* server) {
-	int pkt_size = strlen(lookupAddr) + 2 + sizeof(FixedDNSheader) + sizeof(QueryHeader);
+	int pkg_size = sizeof(FixedDNSheader) + sizeof(QueryHeader);
+	char* buf = NULL;
 
-	char* buf = new char[pkt_size];
+	DWORD IP = inet_addr(lookupAddr);
+	if (IP == INADDR_NONE) { // A Query
+		pkg_size += strlen(lookupAddr) + 2;
+		buf = new char[pkg_size];
 
-	FixedDNSheader* fdh = (FixedDNSheader*) buf;
-	QueryHeader* qh = (QueryHeader*)(buf + pkt_size - sizeof(QueryHeader));
+		FixedDNSheader* fdh = (FixedDNSheader*)buf;
+		QueryHeader* qh = (QueryHeader*)(buf + pkg_size - sizeof(QueryHeader));
 
-	fdh->TXID = 0xABCD;
-	fdh->flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
-	fdh->nQuestions = htons(1);
-	fdh->nAnswers = 0;
-	fdh->nAuthority = 0;
-	fdh->nAdditional = 0;
-	
-	qh->qType = htons(DNS_A);
-	qh->qClass = htons(DNS_INET);
+		fdh->TXID = 0xABCD;
+		fdh->flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
+		fdh->nQuestions = htons(1);
+		fdh->nAnswers = 0;
+		fdh->nAuthority = 0;
+		fdh->nAdditional = 0;
 
-	makeDNSquestionA((char*)(fdh + 1), lookupAddr);
+		qh->qType = htons(DNS_A);
+		qh->qClass = htons(DNS_INET);
 
+		makeDNSquestionA((char*)(fdh + 1), lookupAddr);
+	}
+	else { // Ptr Query
+		int addrSize = strlen(lookupAddr) + 15;
+		pkg_size += addrSize;
+		buf = new char[pkg_size];
 
+		FixedDNSheader* fdh = (FixedDNSheader*)buf;
+		QueryHeader* qh = (QueryHeader*)(buf + pkg_size - sizeof(QueryHeader));
+
+		fdh->TXID = 0x1234;
+		fdh->flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
+		fdh->nQuestions = htons(1);
+		fdh->nAnswers = 0;
+		fdh->nAuthority = 0;
+		fdh->nAdditional = 0;
+
+		qh->qType = htons(DNS_PTR);
+		qh->qClass = htons(DNS_INET);
+
+		makeDNSquestionPtr((char*)(fdh + 1), IP);
+	}
 
 	// socket
 	Socket sock = Socket();
-	if (sock.Send(server, buf, pkt_size) == false) {
+	if (sock.Send(server, buf, pkg_size) == false) {
 		return false;
 	}
 
