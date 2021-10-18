@@ -8,7 +8,10 @@ int main()
 {
     std::cout << "Hello World!\n";
 
-    query();
+    char server[] = "128.194.135.85";
+    char host[] = "amazon.com";
+
+    query(host, server);
 
     
 }

@@ -58,7 +58,6 @@ bool Socket::Send(const char* ip, const char* msg, int msgLen) {
         return false;
     }
        
-    printf("socket send success\n");
     return true;
 }
 

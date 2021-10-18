@@ -74,4 +74,4 @@ string getRRName(const char* buf, int bufSize, int startIdx, u_int* skipSize);
 bool getRRData(const char* buf, int bufSize, int start, int dataSize, char* data);
 bool getRR(const char* buf, int bufSize, char*& cursor);
 bool parseResponse(char* buf, int bufSize);
-bool query();
+bool query(const char* lookupAddr, const char* server);

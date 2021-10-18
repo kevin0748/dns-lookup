@@ -1,7 +1,7 @@
 #include "pch.h"
 
-bool makeDNSquestion(char* buf, char* host) {
-	char* left, *right;
+bool makeDNSquestionA(char* buf, const char* host) {
+	const char* left, *right;
 	int i = 0;
 
 	left = host;
@@ -120,7 +120,7 @@ bool getRR(const char* buf, int bufSize, char*& cursor) {
 		memcpy((char*)&(addr), rrData, dataLen);
 		delete rrData;
 
-		printf("%s %d %s TTL = %d\n",
+		printf("\t%s %d %s TTL = %d\n",
 			rrName.c_str(), // name
 			qType, // type
 			inet_ntoa(addr),// rData
@@ -137,7 +137,7 @@ bool getRR(const char* buf, int bufSize, char*& cursor) {
 		}
 		cursor += dataLen;
 
-		printf("%s %d %s TTL = %d\n",
+		printf("\t%s %d %s TTL = %d\n",
 			rrName.c_str(), // name
 			qType, // type
 			rrDataName.c_str(),// rData
@@ -156,24 +156,33 @@ bool parseResponse(char* buf, int bufSize) {
 	FixedDNSheader* fdh = (FixedDNSheader*)buf;
 	char* cursor = (char*)(fdh + 1);
 	
-	
+	/*
 	for (int i = cursor - buf; i < bufSize; ++i) {
 		printf("[%d] %02hhX\t", i, buf[i]);
 	}
+	*/
 
+	u_short txid = ntohs(fdh->TXID);
+	u_short flags = ntohs(fdh->flags);
 	u_short nQuestions = ntohs(fdh->nQuestions);
 	u_short nAnswers = ntohs(fdh->nAnswers);
 	u_short nAuthority = ntohs(fdh->nAuthority);
 	u_short nAdditional = ntohs(fdh->nAdditional);
-	
-	printf("TXID: %.4x\n", fdh->TXID);
-	printf("Flags: %x\n", fdh->flags);
+	u_short rCode = flags & 1111;
 
+	printf("  TXID: %.4X flags %.4X questions %d answers %d authority %d additional %d\n", txid, flags, nQuestions, nAnswers, nAuthority, nAdditional);
+	if (rCode == DNS_OK) {
+		printf("  succeeded with Rcode = 0\n");
+	}
+	else {
+		printf("  failed with Rcode = %d\n", rCode);
+	}
+	
 
 	// questions
 	if (nQuestions > 0) {
-		printf("---------- [questions] ----------\n");
-		printf("nQuestions: %d\n", nQuestions);
+		printf("  ------------ [questions] ----------\n");
+		//printf("nQuestions: %d\n", nQuestions);
 		for (int i = 0; i < nQuestions; ++i) {
 			u_int nameSkipSize;
 
@@ -185,7 +194,7 @@ bool parseResponse(char* buf, int bufSize) {
 			QueryHeader* qh = (QueryHeader*)(cursor + nameSkipSize);
 			cursor += nameSkipSize + sizeof(QueryHeader);
 
-			printf("%s type %d class %d\n",
+			printf("\t%s type %d class %d\n",
 				rrName.c_str(),
 				ntohs( qh->qType), 
 				ntohs(qh->qClass));
@@ -194,8 +203,8 @@ bool parseResponse(char* buf, int bufSize) {
 
 	// answers
 	if (nAnswers > 0) {
-		printf("---------- [answers] ----------\n");
-		printf("nAnswers: %d\n", nAnswers);
+		printf("  ------------ [answers] ----------\n");
+		//printf("nAnswers: %d\n", nAnswers);
 		for (int i = 0; i < nAnswers; ++i) {
 			getRR(buf, bufSize, cursor);
 		}
@@ -204,8 +213,8 @@ bool parseResponse(char* buf, int bufSize) {
 
 	// authority
 	if (nAuthority > 0) {
-		printf("---------- [authority] ----------\n");
-		printf("nAuthority: %d\n", nAuthority);
+		printf("  ------------ [authority] ----------\n");
+		//printf("nAuthority: %d\n", nAuthority);
 		for (int i = 0; i < nAuthority; ++i) {
 			getRR(buf, bufSize, cursor);
 		}
@@ -213,8 +222,8 @@ bool parseResponse(char* buf, int bufSize) {
 
 	// additional
 	if (nAdditional > 0) {
-		printf("---------- [additional] ----------\n");
-		printf("nAdditional: %d\n", nAdditional);
+		printf("  ------------ [additional] ----------\n");
+		//printf("nAdditional: %d\n", nAdditional);
 		for (int i = 0; i < nAdditional; ++i) {
 			getRR(buf, bufSize, cursor);
 		}
@@ -226,11 +235,8 @@ bool parseResponse(char* buf, int bufSize) {
 
 
 
-bool query() {
-	char server[] = "128.194.135.85";
-	char host[] = "akamai.com";
-
-	int pkt_size = strlen(host) + 2 + sizeof(FixedDNSheader) + sizeof(QueryHeader);
+bool query(const char* lookupAddr, const char* server) {
+	int pkt_size = strlen(lookupAddr) + 2 + sizeof(FixedDNSheader) + sizeof(QueryHeader);
 
 	char* buf = new char[pkt_size];
 
@@ -247,7 +253,7 @@ bool query() {
 	qh->qType = htons(DNS_A);
 	qh->qClass = htons(DNS_INET);
 
-	makeDNSquestion((char*)(fdh + 1), host);
+	makeDNSquestionA((char*)(fdh + 1), lookupAddr);
 
 
 
