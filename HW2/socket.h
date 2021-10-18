@@ -2,6 +2,11 @@
 
 #define INITIAL_BUF_SIZE 512
 
+#define SOCK_OK 0
+#define ERR_SOCK_UNDEFINED 1
+#define ERR_SOCK_TIMEOUT 2
+#define ERR_SOCK_ERROR 3
+
 class Socket
 {
 public:
@@ -14,6 +19,6 @@ public:
     ~Socket();
 
     bool Send(const char* ip, const char* msg, int msgLen);
-    bool Read(const char* ip);
+    int Read(const char* ip);
 };
 

@@ -13,6 +13,7 @@
 #include <windows.h>
 #include <ctime>
 #include <string>
+#include <unordered_map>
 
 #include "socket.h"
 #include "dns.h"

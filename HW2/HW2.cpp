@@ -4,16 +4,30 @@
 #include "pch.h"
 #pragma comment(lib, "Ws2_32.lib")
 
-int main()
+int main(int argc, char* argv[])
 {
-    std::cout << "Hello World!\n";
+    if (argc != 3) {
+        printf("invalid argument.\n");
+        printf("[Usage] HW2.exe $hostOrIP $dnsServer\n");
+        exit(1);
+    }
 
-    char server[] = "128.194.135.85";
+    char* server = argv[2];
+    //char server[] = "128.194.135.82"; //custom
     //char server[] = "8.8.8.8";
-    char host[] = "www.dhs.gov";
+    //char server[] = "127.0.0.1";
+    //char server[] = "128.194.135.85";
+    //char server[] = "128.194.135.11";
+    
+    char* host = argv[1];
+    //char host[] = "165.91.22.70";
+    //char host[] = "google.com";
+    //char host[] = "random8.irl";
+    //char host[] = "128.194.138.19";
 
-    query(host, server);
 
+    DNS dns = DNS();
+    dns.query(host, server);
     
 }
 

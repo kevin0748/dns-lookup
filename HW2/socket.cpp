@@ -33,8 +33,8 @@ Socket::Socket()
     }
 
     // create this buffer once, then possibly reuse for multiple connections in Part 3
-    buf = (char*)malloc(INITIAL_BUF_SIZE);
-    allocatedSize = INITIAL_BUF_SIZE;
+    buf = (char*)malloc(INITIAL_BUF_SIZE+1);
+    allocatedSize = INITIAL_BUF_SIZE+1;
 }
 
 Socket::~Socket() {
@@ -61,7 +61,7 @@ bool Socket::Send(const char* ip, const char* msg, int msgLen) {
     return true;
 }
 
-bool Socket::Read(const char* ip) {
+int Socket::Read(const char* ip) {
     fd_set rfd;
     FD_ZERO(&rfd);
     FD_SET(sock, &rfd);
@@ -85,34 +85,35 @@ bool Socket::Read(const char* ip) {
     // wait to see if socket has any data (see MSDN)
     if ((ret = select(0, &rfd, nullptr, nullptr, &timeout)) > 0)
     {
-        int bytes = recvfrom(sock, buf, allocatedSize, 0, (sockaddr*)&respAddr, &resplen);
+        int bytes = recvfrom(sock, buf, allocatedSize - 1, 0, (sockaddr*)&respAddr, &resplen);
         if (bytes == SOCKET_ERROR) {
-            printf("failed with %d on recv\n", WSAGetLastError());
-            return false;
+            //printf("failed with %d on recv\n", WSAGetLastError());
+            printf("socket error %d\n", WSAGetLastError());
+            return ERR_SOCK_ERROR;
         }
 
         if (bytes == 0) {
             printf("empty response\n");
-            return false;
+            return ERR_SOCK_UNDEFINED;
         }
 
         // check if this packet match the query server
         if (respAddr.sin_addr.s_addr != reqAddr || respAddr.sin_port != reqPort) {
             printf("recv unmatched addr or port\n");
-            return false;
+            return ERR_SOCK_UNDEFINED;
         }
 
         bufSize = bytes + 1;
         buf[bytes] = NULL;
-        return true; 
+        return SOCK_OK; 
     }
     else if (ret == 0) {
         // report timeout
-        printf("recv: timeout\n");
-        return false;
+        // printf("recv: timeout\n");
+        return ERR_SOCK_TIMEOUT;
     }
     else {
         printf("recv error: %d\n", WSAGetLastError());
-        return false;
+        return ERR_SOCK_UNDEFINED;
     }
 }

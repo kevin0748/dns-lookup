@@ -65,13 +65,19 @@ public:
 };
 #pragma pack(pop)  // restores old packing
 
+#define MAX_ATTEMPTS 3
+
 class DNS {
-    
+private:
+    USHORT TXID;
+    unordered_map<u_short, const char*> queryTypeMap;
+
+public:
+    DNS();
+    bool query(const char* lookupAddr, const char* server);
+    bool parseResponse(u_short txid, char* buf, int bufSize);
+    string getRRName(const char* buf, int bufSize, int startIdx, u_int* skipSize);
+    bool getRR(const char* buf, int bufSize, char*& cursor);
+    const char* getQueryTypeName(u_short type);
 };
 
-bool makeDNSquestion(char* buf, char* host);
-string getRRName(const char* buf, int bufSize, int startIdx, u_int* skipSize);
-bool getRRData(const char* buf, int bufSize, int start, int dataSize, char* data);
-bool getRR(const char* buf, int bufSize, char*& cursor);
-bool parseResponse(char* buf, int bufSize);
-bool query(const char* lookupAddr, const char* server);

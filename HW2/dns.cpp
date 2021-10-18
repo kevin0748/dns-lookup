@@ -28,19 +28,15 @@ bool makeDNSquestionA(char* buf, const char* host) {
 	return true;
 }
 
-bool makeDNSquestionPtr(char* buf, DWORD IP) {
-	char temp[512];
-
-	snprintf(temp, 512 + 1, "%d.%d.%d.%d.in-addr.arpa",
+bool makeDNSquestionPtr(char* buf, DWORD IP, char* addr, int addrSize) {
+	snprintf(addr,addrSize, "%d.%d.%d.%d.in-addr.arpa",
 		(IP & 0xFF000000) >> 24,
 		(IP & 0x00FF0000) >> 16,
 		(IP & 0x0000FF00) >> 8,
 		IP & 0x000000FF
 	);
 
-	printf("%s\n", temp);
-
-	return makeDNSquestionA(buf, temp);
+	return makeDNSquestionA(buf, addr);
 }
 
 /*
@@ -49,7 +45,7 @@ bool makeDNSquestionPtr(char* buf, DWORD IP) {
 * output:
 *  u_int* skipSize
 */
-string getRRName(const char *buf, int bufSize, int startIdx, u_int* skipSize) {
+string DNS::getRRName(const char *buf, int bufSize, int startIdx, u_int* skipSize) {
 	string rrName;
 	int i = 0;
 	int curPos = startIdx;
@@ -109,7 +105,16 @@ bool getRRData(const char* buf, int bufSize, int start, int dataSize, char* data
 	return true;
 }
 
-bool getRR(const char* buf, int bufSize, char*& cursor) {
+const char* DNS::getQueryTypeName(u_short type) {
+	if (queryTypeMap.find(type) != queryTypeMap.end()) {
+		return queryTypeMap[type];
+	}
+	
+	return NULL;
+}
+
+
+bool DNS::getRR(const char* buf, int bufSize, char*& cursor) {
 	u_int nameSkipSize;
 
 	// TODO: fix return
@@ -135,9 +140,9 @@ bool getRR(const char* buf, int bufSize, char*& cursor) {
 		memcpy((char*)&(addr), rrData, dataLen);
 		delete rrData;
 
-		printf("\t%s %d %s TTL = %d\n",
+		printf("\t%s %s %s TTL = %d\n",
 			rrName.c_str(), // name
-			qType, // type
+			getQueryTypeName(qType), // type
 			inet_ntoa(addr),// rData
 			ntohl(fr->TTL)// ttl
 		);
@@ -152,9 +157,9 @@ bool getRR(const char* buf, int bufSize, char*& cursor) {
 		}
 		cursor += dataLen;
 
-		printf("\t%s %d %s TTL = %d\n",
+		printf("\t%s %s %s TTL = %d\n",
 			rrName.c_str(), // name
-			qType, // type
+			getQueryTypeName(qType), // type
 			rrDataName.c_str(),// rData
 			ntohl(fr->TTL)// ttl
 		);
@@ -168,7 +173,7 @@ bool getRR(const char* buf, int bufSize, char*& cursor) {
 	}
 }
 
-bool parseResponse(char* buf, int bufSize) {
+bool DNS::parseResponse(u_short sentTxid, char* buf, int bufSize) {
 	FixedDNSheader* fdh = (FixedDNSheader*)buf;
 	char* cursor = (char*)(fdh + 1);
 	
@@ -184,14 +189,21 @@ bool parseResponse(char* buf, int bufSize) {
 	u_short nAnswers = ntohs(fdh->nAnswers);
 	u_short nAuthority = ntohs(fdh->nAuthority);
 	u_short nAdditional = ntohs(fdh->nAdditional);
-	u_short rCode = flags & 1111;
+	u_short rCode = flags & 15;
 
-	printf("  TXID: %.4X flags %.4X questions %d answers %d authority %d additional %d\n", txid, flags, nQuestions, nAnswers, nAuthority, nAdditional);
+	// handle mismatch txid
+	if (txid != sentTxid) {
+		printf("  ++ invalid reply: TXID mismatch, sent 0x%.4X, received 0x%.4X\n", sentTxid, txid);
+		return false;
+	}
+
+	printf("  TXID: 0x%.4X, flags 0x%.4X, questions %d, answers %d, authority %d, additional %d\n", txid, flags, nQuestions, nAnswers, nAuthority, nAdditional);
 	if (rCode == DNS_OK) {
 		printf("  succeeded with Rcode = 0\n");
 	}
 	else {
 		printf("  failed with Rcode = %d\n", rCode);
+		return false;
 	}
 	
 
@@ -249,67 +261,100 @@ bool parseResponse(char* buf, int bufSize) {
 	return true;
 }
 
-bool query(const char* lookupAddr, const char* server) {
+
+DNS::DNS() {
+	TXID = 1;
+
+	queryTypeMap[DNS_A] = "A";
+	queryTypeMap[DNS_NS] = "NS";
+	queryTypeMap[DNS_CNAME] = "CNAME";
+	queryTypeMap[DNS_PTR] = "PTR";
+}
+
+bool DNS::query(const char* lookupAddr, const char* server) {
 	int pkg_size = sizeof(FixedDNSheader) + sizeof(QueryHeader);
 	char* buf = NULL;
 
+	u_short txid = TXID++;
+	u_short qType;
+
 	DWORD IP = inet_addr(lookupAddr);
 	if (IP == INADDR_NONE) { // A Query
+		qType = DNS_A;
 		pkg_size += strlen(lookupAddr) + 2;
-		buf = new char[pkg_size];
-
-		FixedDNSheader* fdh = (FixedDNSheader*)buf;
-		QueryHeader* qh = (QueryHeader*)(buf + pkg_size - sizeof(QueryHeader));
-
-		fdh->TXID = 0xABCD;
-		fdh->flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
-		fdh->nQuestions = htons(1);
-		fdh->nAnswers = 0;
-		fdh->nAuthority = 0;
-		fdh->nAdditional = 0;
-
-		qh->qType = htons(DNS_A);
-		qh->qClass = htons(DNS_INET);
-
-		makeDNSquestionA((char*)(fdh + 1), lookupAddr);
 	}
 	else { // Ptr Query
+		qType = DNS_PTR;
 		int addrSize = strlen(lookupAddr) + 15;
 		pkg_size += addrSize;
-		buf = new char[pkg_size];
-
-		FixedDNSheader* fdh = (FixedDNSheader*)buf;
-		QueryHeader* qh = (QueryHeader*)(buf + pkg_size - sizeof(QueryHeader));
-
-		fdh->TXID = 0x1234;
-		fdh->flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
-		fdh->nQuestions = htons(1);
-		fdh->nAnswers = 0;
-		fdh->nAuthority = 0;
-		fdh->nAdditional = 0;
-
-		qh->qType = htons(DNS_PTR);
-		qh->qClass = htons(DNS_INET);
-
-		makeDNSquestionPtr((char*)(fdh + 1), IP);
 	}
 
+	buf = new char[pkg_size];
+	FixedDNSheader* fdh = (FixedDNSheader*)buf;
+	QueryHeader* qh = (QueryHeader*)(buf + pkg_size - sizeof(QueryHeader));
+
+	fdh->TXID = htons(txid);
+	fdh->flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
+	fdh->nQuestions = htons(1);
+	fdh->nAnswers = 0;
+	fdh->nAuthority = 0;
+	fdh->nAdditional = 0;
+
+	qh->qType = htons(qType);
+	qh->qClass = htons(DNS_INET);
+
+	printf(" Lookup\t: %s\n", lookupAddr);
+
+	if (qType == DNS_A) { // A Query
+		makeDNSquestionA((char*)(fdh + 1), lookupAddr);
+		printf(" Query\t: %s, type %d, TXID 0x%.4X\n", lookupAddr, qType, txid);
+	}
+	else { // Ptr Query
+		char* addr = new char[512];
+		makeDNSquestionPtr((char*)(fdh + 1), IP,addr, 512+1);
+		printf(" Query\t: %s, type %d, TXID 0x%.4X\n", addr, qType, txid);
+		delete addr;
+	}
+
+	printf(" Server\t: %s\n", server);
+	printf(" ********************************\n");
+	
 	// socket
 	Socket sock = Socket();
-	if (sock.Send(server, buf, pkg_size) == false) {
+	int count = 0;
+	bool readOk = false;
+	while (count < MAX_ATTEMPTS) {
+		printf(" Attempt %d with %d bytes... ", count, pkg_size);
+		clock_t timer = clock();
+
+		if (sock.Send(server, buf, pkg_size) == false) {
+			continue;
+		}
+
+		int readResult = sock.Read(server);
+		if (readResult == SOCK_OK) {
+			readOk = true;
+			timer = clock() - timer;
+			printf("response in %d ms with %d bytes\n", 1000 * timer / CLOCKS_PER_SEC, sock.bufSize);
+			break;
+		}
+		else if (readResult == ERR_SOCK_TIMEOUT) {
+			timer = clock() - timer;
+			printf("timeout in %d ms\n", 1000 * timer / CLOCKS_PER_SEC);
+		}
+		else if (readResult == ERR_SOCK_ERROR) {
+			break;
+		}
+		
+		count++;
+	}
+	if (!readOk) {
 		return false;
 	}
 
-	if (sock.Read(server) == false) {
-		return false;
-	}
-
-	parseResponse(sock.buf, sock.bufSize);
-
+	parseResponse(txid, sock.buf, sock.bufSize);
 
 	delete buf;
-
-
 	return true;
 }
 
