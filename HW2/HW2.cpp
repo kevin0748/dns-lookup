@@ -8,7 +8,7 @@ int main(int argc, char* argv[])
 {
     if (argc != 3) {
         printf("invalid argument.\n");
-        printf("[Usage] HW2.exe $hostOrIP $dnsServer\n");
+        printf("[Usage] HW2.exe $host_or_ip $dns_server\n");
         exit(1);
     }
 
@@ -16,12 +16,12 @@ int main(int argc, char* argv[])
     //char server[] = "128.194.135.82"; //custom
     //char server[] = "8.8.8.8";
     //char server[] = "127.0.0.1";
-    //char server[] = "128.194.135.85";
+    //char server[] = "12.190.0.107";
     //char server[] = "128.194.135.11";
     
     char* host = argv[1];
     //char host[] = "165.91.22.70";
-    //char host[] = "google.com";
+    //char host[] = "www.dhs.gov";
     //char host[] = "random8.irl";
     //char host[] = "128.194.138.19";
 

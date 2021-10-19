@@ -103,7 +103,8 @@ int Socket::Read(const char* ip) {
             return ERR_SOCK_UNDEFINED;
         }
 
-        bufSize = bytes + 1;
+        bufSize = bytes;
+        //bufSize = bytes + 1;
         buf[bytes] = NULL;
         return SOCK_OK; 
     }

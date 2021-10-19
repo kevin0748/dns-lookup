@@ -67,6 +67,17 @@ public:
 
 #define MAX_ATTEMPTS 3
 
+#define DNS_FIXED_HEADER_SIZE  12
+
+#define DNS_OK 0
+#define ERR_DNS_UNDEFINED 1
+#define ERR_DNS_BEYOND_PKT 2
+#define ERR_DNS_JUMP_TO_FIXED_HEADER 3
+#define ERR_DNS_INVALID_JUMP_OFFSET 4
+#define ERR_DNS_RRVALUE_BEYOND_PKT 5
+#define ERR_DNS_RRNAME_BEYOND_PKT 6
+#define ERR_DNS_INVALID_RR_HEADER 7
+
 class DNS {
 private:
     USHORT TXID;
@@ -76,8 +87,8 @@ public:
     DNS();
     bool query(const char* lookupAddr, const char* server);
     bool parseResponse(u_short txid, char* buf, int bufSize);
-    string getRRName(const char* buf, int bufSize, int startIdx, u_int* skipSize);
-    bool getRR(const char* buf, int bufSize, char*& cursor);
+    int getRRName(const char* buf, int bufSize, int startIdx, u_int* skipSize, string& rrName);
+    int getRR(const char* buf, int bufSize, char*& cursor);
     const char* getQueryTypeName(u_short type);
 };
 

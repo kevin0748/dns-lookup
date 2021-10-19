@@ -44,37 +44,50 @@ bool makeDNSquestionPtr(char* buf, DWORD IP, char* addr, int addrSize) {
 * 
 * output:
 *  u_int* skipSize
+*  string& rrname 
 */
-string DNS::getRRName(const char *buf, int bufSize, int startIdx, u_int* skipSize) {
-	string rrName;
+int DNS::getRRName(const char *buf, int bufSize, int startIdx, u_int* skipSize, string& rrName) {
+	if (startIdx < DNS_FIXED_HEADER_SIZE) {
+		printf("  ++ invalid record: jump into fixed DNS header\n");
+		return ERR_DNS_JUMP_TO_FIXED_HEADER;
+	}
+	if (startIdx >= bufSize) {
+		printf("  ++ invalid record: jump beyond packet boundary\n");
+		return ERR_DNS_BEYOND_PKT;
+	}
+
 	int i = 0;
 	int curPos = startIdx;
 	u_char cursor = buf[curPos];
 	while (cursor) {
 		// check compressed
 		if (cursor >= 0xC0) {
-			if (curPos + 1 >= bufSize) {
-				printf("name size exceed buf size\n");
-				return "";
+			if (curPos + 1 == bufSize) {
+				printf("  ++ invalid record: truncated jump offset (e.g.., 0xC0 and the packet ends)\n");
+				return ERR_DNS_INVALID_JUMP_OFFSET;
 			}
 
 			int off = ((buf[curPos] & 0x3F) << 8) + (u_char)buf[curPos + 1];
 			u_int dummySkipSize;
-			string compressRRName = getRRName(buf, bufSize, off, &dummySkipSize);
+			string compressRRName;
+			int ret = getRRName(buf, bufSize, off, &dummySkipSize, compressRRName);
+			if (ret != DNS_OK) {
+				return ret;
+			}
 
 			if (rrName.size() > 0) {
 				rrName += '.';
 			}
 			rrName += compressRRName;
 			*skipSize = curPos - startIdx + 2;
-			return rrName;
+			return DNS_OK;
 		}
 
 		curPos++; // it's not compressed, move curPos forward
 		int len = (int)cursor;
-		if (curPos + len >= bufSize) {
-			printf("name size exceed buf size\n");
-			return "";
+		if (curPos + len - 1 >= bufSize) {
+			printf("  ++ invalid record: truncated name (e.g., \"6 goog\" and the packet ends)\n");
+			return ERR_DNS_RRNAME_BEYOND_PKT;
 		}
 
 		if (i != 0) {
@@ -91,18 +104,18 @@ string DNS::getRRName(const char *buf, int bufSize, int startIdx, u_int* skipSiz
 
 	//name[i] = NULL;
 	*skipSize = curPos - startIdx + 1;
-	return rrName;
+	return DNS_OK;
 }
 
-bool getRRData(const char* buf, int bufSize, int start, int dataSize, char* data) {
-	if (start + dataSize >= bufSize) {
-		printf("getRRData: exceed bufSize\n");
-		return false;
+int getRRData(const char* buf, int bufSize, int start, int dataSize, char* data) {
+	if (start + dataSize - 1 >= bufSize) {
+		printf("  ++ invalid record: RR value length stretches the answer beyond packet\n");
+		return ERR_DNS_RRVALUE_BEYOND_PKT;
 	}
 
 	memcpy(data, buf + start, dataSize);
 	data[dataSize] = NULL;
-	return true;
+	return DNS_OK;
 }
 
 const char* DNS::getQueryTypeName(u_short type) {
@@ -114,25 +127,36 @@ const char* DNS::getQueryTypeName(u_short type) {
 }
 
 
-bool DNS::getRR(const char* buf, int bufSize, char*& cursor) {
+int DNS::getRR(const char* buf, int bufSize, char*& cursor) {
 	u_int nameSkipSize;
 
-	// TODO: fix return
-	string rrName = getRRName(buf, bufSize, cursor - buf, &nameSkipSize);
-	if (rrName == "") {
-		return false;
+	if (cursor - buf >= bufSize) {
+		printf("  ++ invalid section: not enough records (e.g., declared 5 answers but only 3 found)\n");
+		return ERR_DNS_UNDEFINED;
+	}
+
+	string rrName; 
+	int ret = getRRName(buf, bufSize, cursor - buf, &nameSkipSize, rrName);
+	if (ret != DNS_OK) {
+		return ret;
+	}
+
+	if ((cursor - buf) + nameSkipSize >= bufSize) {
+		printf("  ++ invalid record: truncated RR answer header (i.e., don’t have the full 10 bytes)\n");
+		return ERR_DNS_INVALID_RR_HEADER;
 	}
 
 	FixedRR* fr = (FixedRR*)(cursor + nameSkipSize);
 	cursor += nameSkipSize + sizeof(FixedRR);
-
+	 
 	int dataLen = ntohs(fr->len);
 
 	u_short qType = ntohs(fr->qType);
 	if (qType == DNS_A) {
 		char* rrData = new char[dataLen + 1];
-		if (getRRData(buf, bufSize, cursor - buf, dataLen, rrData) == false) {
-			return false;
+		int ret = getRRData(buf, bufSize, cursor - buf, dataLen, rrData);
+		if (ret != DNS_OK) {
+			return ret;
 		}
 		cursor += dataLen;
 
@@ -147,13 +171,14 @@ bool DNS::getRR(const char* buf, int bufSize, char*& cursor) {
 			ntohl(fr->TTL)// ttl
 		);
 
-		return true;
+		return DNS_OK;
 	}
 	else if (qType == DNS_NS || qType == DNS_CNAME || qType == DNS_PTR) {
 		u_int dataSkipSize;
-		string rrDataName = getRRName(buf, bufSize, cursor - buf, &dataSkipSize);
-		if (rrDataName == "") {
-			return false;
+		string rrDataName;
+		int ret = getRRName(buf, bufSize, cursor - buf, &dataSkipSize, rrDataName);
+		if (ret != DNS_OK) {
+			return ret;
 		}
 		cursor += dataLen;
 
@@ -164,12 +189,12 @@ bool DNS::getRR(const char* buf, int bufSize, char*& cursor) {
 			ntohl(fr->TTL)// ttl
 		);
 
-		return true;
+		return DNS_OK;
 	}
 	else {
-		printf("dns type %d not implemented\n", qType);
+		//printf("dns type %d not implemented\n", qType);
 		cursor += dataLen;
-		return true;
+		return DNS_OK;
 	}
 }
 
@@ -180,8 +205,8 @@ bool DNS::parseResponse(u_short sentTxid, char* buf, int bufSize) {
 	/*
 	for (int i = cursor - buf; i < bufSize; ++i) {
 		printf("[%d] %02hhX\t", i, buf[i]);
-	}
-	*/
+	}*/
+	
 
 	u_short txid = ntohs(fdh->TXID);
 	u_short flags = ntohs(fdh->flags);
@@ -214,8 +239,8 @@ bool DNS::parseResponse(u_short sentTxid, char* buf, int bufSize) {
 		for (int i = 0; i < nQuestions; ++i) {
 			u_int nameSkipSize;
 
-			string rrName = getRRName(buf, bufSize, cursor - buf, &nameSkipSize);
-			if (rrName == "") {
+			string rrName;
+			if (getRRName(buf, bufSize, cursor - buf, &nameSkipSize, rrName) != DNS_OK) {
 				return false;
 			}
 
@@ -234,7 +259,9 @@ bool DNS::parseResponse(u_short sentTxid, char* buf, int bufSize) {
 		printf("  ------------ [answers] ----------\n");
 		//printf("nAnswers: %d\n", nAnswers);
 		for (int i = 0; i < nAnswers; ++i) {
-			getRR(buf, bufSize, cursor);
+			if (getRR(buf, bufSize, cursor) != DNS_OK) {
+				return false;
+			}
 		}
 	}
 
@@ -244,7 +271,9 @@ bool DNS::parseResponse(u_short sentTxid, char* buf, int bufSize) {
 		printf("  ------------ [authority] ----------\n");
 		//printf("nAuthority: %d\n", nAuthority);
 		for (int i = 0; i < nAuthority; ++i) {
-			getRR(buf, bufSize, cursor);
+			if (getRR(buf, bufSize, cursor) != DNS_OK) {
+				return false;
+			}
 		}
 	}
 
@@ -253,7 +282,9 @@ bool DNS::parseResponse(u_short sentTxid, char* buf, int bufSize) {
 		printf("  ------------ [additional] ----------\n");
 		//printf("nAdditional: %d\n", nAdditional);
 		for (int i = 0; i < nAdditional; ++i) {
-			getRR(buf, bufSize, cursor);
+			if (getRR(buf, bufSize, cursor) != DNS_OK) {
+				return false;
+			}
 		}
 	}
 
@@ -349,6 +380,11 @@ bool DNS::query(const char* lookupAddr, const char* server) {
 		count++;
 	}
 	if (!readOk) {
+		return false;
+	}
+
+	if (sock.bufSize < DNS_FIXED_HEADER_SIZE) {
+		printf("  ++ invalid reply: packet smaller than fixed DNS header\n");
 		return false;
 	}
 
