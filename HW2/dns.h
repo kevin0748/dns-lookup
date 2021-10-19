@@ -77,11 +77,13 @@ public:
 #define ERR_DNS_RRVALUE_BEYOND_PKT 5
 #define ERR_DNS_RRNAME_BEYOND_PKT 6
 #define ERR_DNS_INVALID_RR_HEADER 7
+#define ERR_DNS_JUMP_LOOP 8
 
 class DNS {
 private:
     USHORT TXID;
     unordered_map<u_short, const char*> queryTypeMap;
+    unordered_map<u_short, bool> visited; // (visited, solved)
 
 public:
     DNS();

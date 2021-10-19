@@ -56,6 +56,18 @@ int DNS::getRRName(const char *buf, int bufSize, int startIdx, u_int* skipSize, 
 		return ERR_DNS_BEYOND_PKT;
 	}
 
+	// solve jump loop
+	// TODO: memory string
+	if (visited.find(startIdx) != visited.end()) {
+		if (visited[startIdx] == false) {
+			printf("  ++ invalid record: jump loop\n");
+			return ERR_DNS_JUMP_LOOP;
+		}
+	}
+	else {
+		visited[startIdx] = false;
+	}
+
 	int i = 0;
 	int curPos = startIdx;
 	u_char cursor = buf[curPos];
@@ -80,6 +92,7 @@ int DNS::getRRName(const char *buf, int bufSize, int startIdx, u_int* skipSize, 
 			}
 			rrName += compressRRName;
 			*skipSize = curPos - startIdx + 2;
+			visited[startIdx] = true;
 			return DNS_OK;
 		}
 
@@ -104,6 +117,7 @@ int DNS::getRRName(const char *buf, int bufSize, int startIdx, u_int* skipSize, 
 
 	//name[i] = NULL;
 	*skipSize = curPos - startIdx + 1;
+	visited[startIdx] = true;
 	return DNS_OK;
 }
 
