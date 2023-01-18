@@ -1,5 +1,7 @@
 # DNS Lookup
 
+Program that issues recursive queries to DNS server and parses its responses. Use UDP to request and assemble DNS response which scattered across packets. Parse 
+record type: `CNAME`, `A`, `NS`, and `PTR` response and generate DNS reports.
 ## Runtime Example
 
 DNS lookup
